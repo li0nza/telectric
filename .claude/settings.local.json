@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:openchargemap.org)",
+      "WebFetch(domain:docs.fleaflet.dev)",
+      "WebFetch(domain:api.openchargemap.org)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "WebFetch(domain:publicapi.dev)",
+      "WebFetch(domain:community.openchargemap.org)",
+      "WebFetch(domain:api.openchargemap.io)",
+      "WebFetch(domain:openchargemap.io)",
+      "WebFetch(domain:patrol.leancode.co)",
+      "WebFetch(domain:dev.to)"
+    ]
+  }
+}
