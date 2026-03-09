@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:patrol/patrol.dart';
+import 'package:geolocator_platform_interface/geolocator_platform_interface.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:telectric/app.dart';
 import 'package:telectric/cubit/station_cubit.dart';
 import 'package:telectric/data/charging_station_api.dart';
@@ -13,6 +14,33 @@ import 'package:telectric/models/charging_station.dart';
 class MockChargingStationApi extends Mock implements ChargingStationApi {}
 
 class MockLocationService extends Mock implements LocationService {}
+
+class FakeGeolocatorPlatform extends Fake
+    with MockPlatformInterfaceMixin
+    implements GeolocatorPlatform {
+  @override
+  Future<bool> isLocationServiceEnabled() async => true;
+  @override
+  Future<LocationPermission> checkPermission() async =>
+      LocationPermission.whileInUse;
+  @override
+  Future<LocationPermission> requestPermission() async =>
+      LocationPermission.whileInUse;
+  @override
+  Stream<Position> getPositionStream(
+          {LocationSettings? locationSettings}) =>
+      const Stream.empty();
+  @override
+  Stream<ServiceStatus> getServiceStatusStream() => const Stream.empty();
+  @override
+  Future<Position?> getLastKnownPosition(
+          {bool forceLocationManager = false}) async =>
+      null;
+  @override
+  Future<Position> getCurrentPosition(
+          {LocationSettings? locationSettings}) async =>
+      _testPosition;
+}
 
 final _testStations = [
   const ChargingStation(
@@ -87,6 +115,10 @@ void main() {
     mockApi = MockChargingStationApi();
     mockLocation = MockLocationService();
 
+    // Fake the platform-level Geolocator so CurrentLocationLayer's
+    // internal calls don't trigger real platform channel requests.
+    GeolocatorPlatform.instance = FakeGeolocatorPlatform();
+
     when(() => mockLocation.isLocationServiceEnabled())
         .thenAnswer((_) async => true);
     when(() => mockLocation.checkPermission())
@@ -116,91 +148,95 @@ void main() {
     );
   }
 
-  patrolTest(
+  testWidgets(
     'app loads, displays stations, and shows detail sheet on tap',
-    ($) async {
-      await $.pumpWidgetAndSettle(buildApp());
+    (tester) async {
+      await tester.pumpWidget(buildApp());
+      await tester.pumpAndSettle();
 
       // Verify the map is visible
-      expect($('Telectric'), findsNothing); // no app bar title, map fills screen
-      expect($(Icons.my_location), findsOneWidget);
+      expect(find.text('Telectric'), findsNothing);
+      expect(find.byIcon(Icons.my_location), findsOneWidget);
 
       // Verify API call counter shows 1 after initial load
-      expect($('1'), findsOneWidget);
+      expect(find.text('1'), findsOneWidget);
 
       // Verify station markers are on the map
-      expect($(Icons.location_pin), findsNWidgets(2));
+      expect(find.byIcon(Icons.location_pin), findsNWidgets(2));
 
       // Tap the first station marker to show detail sheet
-      await $(Icons.location_pin).first.tap();
-      await $.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.location_pin).first);
+      await tester.pumpAndSettle();
 
       // Verify detail sheet shows station info
-      expect($('Test Station Alpha'), findsOneWidget);
-      expect($('123 Main Street'), findsOneWidget);
-      expect($('Utrecht'), findsOneWidget);
-      expect($('1.2 km away'), findsOneWidget);
-      expect($('ChargePoint'), findsOneWidget);
-      expect($('Free'), findsOneWidget);
-      expect($('2 charging point(s)'), findsOneWidget);
+      expect(find.text('Test Station Alpha'), findsOneWidget);
+      expect(find.text('123 Main Street'), findsOneWidget);
+      expect(find.text('Utrecht'), findsOneWidget);
+      expect(find.text('1.2 km away'), findsOneWidget);
+      expect(find.text('ChargePoint'), findsOneWidget);
+      expect(find.text('Free'), findsOneWidget);
+      expect(find.text('2 charging point(s)'), findsOneWidget);
 
       // Verify connector info
-      expect($('Type 2'), findsOneWidget);
-      expect($('22 kW'), findsOneWidget);
+      expect(find.text('Type 2'), findsOneWidget);
+      expect(find.text('22 kW'), findsOneWidget);
 
       // Dismiss the detail sheet
-      await $(Icons.close).tap();
-      await $.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
 
       // Verify detail sheet is dismissed
-      expect($('Test Station Alpha'), findsNothing);
+      expect(find.text('Test Station Alpha'), findsNothing);
     },
   );
 
-  patrolTest(
+  testWidgets(
     'API call counter increments on each search',
-    ($) async {
-      await $.pumpWidgetAndSettle(buildApp());
+    (tester) async {
+      await tester.pumpWidget(buildApp());
+      await tester.pumpAndSettle();
 
       // After initial load, counter should show 1
-      expect($('1'), findsOneWidget);
+      expect(find.text('1'), findsOneWidget);
 
       // Tap my location to trigger another fetch
-      await $(Icons.my_location).tap();
-      await $.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.my_location));
+      await tester.pumpAndSettle();
 
       // Counter should now show 2
-      expect($('2'), findsOneWidget);
+      expect(find.text('2'), findsOneWidget);
     },
   );
 
-  patrolTest(
+  testWidgets(
     'shows error when location services are disabled',
-    ($) async {
+    (tester) async {
       when(() => mockLocation.isLocationServiceEnabled())
           .thenAnswer((_) async => false);
 
-      await $.pumpWidgetAndSettle(buildApp());
+      await tester.pumpWidget(buildApp());
+      await tester.pumpAndSettle();
 
       // Verify error snackbar is shown
       expect(
-        $('Location services are disabled. Please enable them.'),
+        find.text('Location services are disabled. Please enable them.'),
         findsOneWidget,
       );
     },
   );
 
-  patrolTest(
+  testWidgets(
     'shows error when location permission is denied',
-    ($) async {
+    (tester) async {
       when(() => mockLocation.checkPermission())
           .thenAnswer((_) async => LocationPermission.denied);
       when(() => mockLocation.requestPermission())
           .thenAnswer((_) async => LocationPermission.denied);
 
-      await $.pumpWidgetAndSettle(buildApp());
+      await tester.pumpWidget(buildApp());
+      await tester.pumpAndSettle();
 
-      expect($('Location permission was denied.'), findsOneWidget);
+      expect(find.text('Location permission was denied.'), findsOneWidget);
     },
   );
 }
